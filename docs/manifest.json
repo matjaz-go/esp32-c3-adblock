@@ -1,7 +1,8 @@
 {
   "name": "C3 AdBlocker",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "new_install_prompt_erase": true,
+  "new_install_improv_wait_time": 20,
   "builds": [
     {
       "chipFamily": "ESP32-C3",

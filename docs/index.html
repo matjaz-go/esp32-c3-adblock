@@ -52,10 +52,14 @@
     <ol>
       <li>Click <b>Connect &amp; Install</b> and pick your ESP32-C3's serial port.</li>
       <li>It flashes the firmware + a 141k-domain blocklist (~30s).</li>
-      <li>After it reboots, it makes a WiFi network called <code>C3-AdBlock-XXXX</code> — join it from your phone, pick your WiFi, type the password.</li>
-      <li>Set it as your router's secondary DNS (or per-device), and ads are blocked network-wide. Dashboard at <code>c3adblock.local</code>.</li>
+      <li>When it reboots, this page asks for your WiFi — pick your network, type the password. It's sent to the board over the USB cable.</li>
+      <li>Click <b>Visit device</b> to open the dashboard. On your phone, open the same address and use <b>Add to Home Screen</b> for an app icon.</li>
+      <li>Set it as your router's secondary DNS (or per-device), and ads are blocked network-wide.</li>
     </ol>
-    <p class="note">No WiFi credentials are baked into this build — you set them on-device, privately.</p>
+    <p class="note">No WiFi credentials are baked into this build — you set them on-device, privately.
+    Setting up without a computer? The board also makes a WiFi network called <code>C3-AdBlock-XXXX</code> — join it from your phone and a setup page pops up.
+    To change WiFi later, plug it in here and click <b>Connect</b> again.</p>
+    <p class="note">Tip: <code>c3adblock.local</code> doesn't resolve on some Android phones and routers — use the IP address shown after setup, and reserve it in your router's DHCP settings.</p>
   </div>
 
   <p class="note">

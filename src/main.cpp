@@ -12,7 +12,6 @@
 #include <Update.h>            // firmware OTA
 #include <HTTPClient.h>        // remote blocklist fetch
 #include <WiFiClientSecure.h>  // https fetch
-#include <ArduinoOTA.h>        // network firmware flashing (pio run over wifi)
 #include <DNSServer.h>         // captive-portal catch-all DNS
 #include <Preferences.h>       // NVS store for provisioned WiFi creds
 #include "lwip/etharp.h"
@@ -70,6 +69,7 @@ String updateStatus = "never";
 Preferences prefs;
 DNSServer   dnsPortal;
 String      portalOpts;             // <option> list of scanned networks, built once at portal start
+char        apName[24];             // C3-AdBlock-XXXX, kept so Improv can restore the AP after a failed join
 
 // blocking pause (Pi-hole-style "disable for a while")
 bool     blockingOn = true;
@@ -316,6 +316,7 @@ static String htmlEscape(const String& s) {
 }
 
 #include "page.h"   // dashboard HTML (PROGMEM) — see issue #6
+#include "webapp.h" // home-screen manifest + icons
 
 static void handleStats() {
   uint32_t up = millis() / 1000;
@@ -326,7 +327,7 @@ static void handleStats() {
              ",\"upurl\":\"" + jesc(updateUrl) + "\",\"upiv\":" + updateIntervalH + ",\"upstat\":\"" + jesc(updateStatus) + "\"" +
              ",\"blocking\":" + (blockingOn ? "true" : "false") +
              ",\"resumeIn\":" + (uint32_t)(!blockingOn && resumeAt ? (resumeAt - millis()) / 1000 : 0) +
-             ",\"defcreds\":" + ((strcmp(WEB_PASS, "CHANGE_ME_WEB_PASSWORD") == 0 || strcmp(OTA_PASS, "CHANGE_ME_OTA_PASSWORD") == 0) ? "true" : "false") +
+             ",\"defcreds\":" + (strcmp(WEB_PASS, "CHANGE_ME_WEB_PASSWORD") == 0 ? "true" : "false") +
              ",\"clients\":[";
   for (int i = 0; i < numClients; i++) { Dev& c = clients[i]; IPAddress ip(c.ip);
     j += (i ? "," : ""); j += "{\"ip\":\"" + ip.toString() + "\",\"mac\":\"" + macStr(c.mac) + "\",\"blocked\":" + c.blocked + ",\"allowed\":" + c.allowed + ",\"banned\":" + (c.banned?"true":"false") + "}"; }
@@ -490,7 +491,9 @@ static void handleFwUpload() {
   }
 }
 
-// ---------- WiFi provisioning (captive portal) ----------
+// ---------- WiFi provisioning (Improv serial + captive portal) ----------
+#include "improv.h"   // browser-installer WiFi setup over USB serial
+
 // Try provisioned NVS creds first, then the compile-time secrets.h creds as a
 // fallback (so the maintainer's own device + source builders keep working). If
 // neither connects, fall through to the config portal.
@@ -509,9 +512,29 @@ static bool connectWiFi() {
   Serial.printf("WiFi: connecting to \"%s\"%s\n", ssid, ss.length() ? " (provisioned)" : " (secrets.h)");
   WiFi.mode(WIFI_STA); WiFi.setSleep(false); WiFi.begin(ssid, pass);
   uint32_t t0 = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - t0 < 30000) { delay(250); Serial.print("."); }
+  while (WiFi.status() != WL_CONNECTED && millis() - t0 < 30000) { improvLoop(); delay(250); Serial.print("."); }
   Serial.println();
   return WiFi.status() == WL_CONNECTED;
+}
+
+// Improv: try the creds the browser sent and persist them only if they work.
+// On failure put things back (portal AP, or the previous network) so setup can retry.
+static bool improvJoin(const String& ssid, const String& pass) {
+  const bool portal = WiFi.getMode() & WIFI_AP;
+  if (portal) { dnsPortal.stop(); WiFi.softAPdisconnect(true); }
+  Serial.printf("[improv] joining \"%s\"\n", ssid.c_str());
+  WiFi.mode(WIFI_STA); WiFi.setSleep(false); WiFi.begin(ssid.c_str(), pass.c_str());
+  uint32_t t0 = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - t0 < 20000) delay(100);
+  if (WiFi.status() == WL_CONNECTED) {
+    prefs.begin("wifi", false); prefs.putString("ssid", ssid); prefs.putString("pass", pass); prefs.end();
+    return true;
+  }
+  Serial.println("[improv] join failed");
+  WiFi.disconnect();
+  if (portal) { WiFi.mode(WIFI_AP); WiFi.softAP(apName); dnsPortal.start(53, "*", WiFi.softAPIP()); }
+  else connectWiFi();
+  return false;
 }
 
 static void handlePortalRoot() {
@@ -544,8 +567,8 @@ static void startConfigPortal() {
   portalOpts = "";
   for (int i = 0; i < n && i < 15; i++) portalOpts += "<option value='" + htmlEscape(WiFi.SSID(i)) + "'>";
   uint8_t mac[6]; WiFi.macAddress(mac);
-  char ap[24]; snprintf(ap, sizeof(ap), "C3-AdBlock-%02X%02X", mac[4], mac[5]);
-  WiFi.mode(WIFI_AP); WiFi.softAP(ap);
+  snprintf(apName, sizeof(apName), "C3-AdBlock-%02X%02X", mac[4], mac[5]);
+  WiFi.mode(WIFI_AP); WiFi.softAP(apName);
   IPAddress apIP = WiFi.softAPIP();
   dnsPortal.start(53, "*", apIP);              // catch-all -> phones pop the captive portal
   web.on("/", handlePortalRoot);
@@ -553,13 +576,13 @@ static void startConfigPortal() {
   web.onNotFound(handlePortalRoot);            // any captive-portal probe -> the form
   web.begin();
   Serial.printf("\n[setup] No WiFi. Join open network \"%s\" and a setup page pops up (or http://%s)\n",
-                ap, apIP.toString().c_str());
+                apName, apIP.toString().c_str());
   // A configured device that merely failed to join (router rebooting, weak signal) must not
   // get stuck here: if nobody is using the portal, reboot and retry WiFi every 3 minutes.
   const bool configured = hasCreds();
   uint32_t t0 = millis();
   while (true) {
-    dnsPortal.processNextRequest(); web.handleClient(); delay(2);
+    dnsPortal.processNextRequest(); web.handleClient(); improvLoop(); delay(2);
     if (WiFi.softAPgetStationNum() > 0) t0 = millis();          // someone is setting it up
     if (configured && millis() - t0 > 180000UL) { Serial.println("[setup] retrying WiFi"); ESP.restart(); }
   }
@@ -593,8 +616,8 @@ void setup() {
   Serial.printf("WiFi up: %s\n", WiFi.localIP().toString().c_str());
   if (MDNS.begin("c3adblock")) { MDNS.addService("http", "tcp", 80); Serial.println("dashboard: http://c3adblock.local"); }
 
-  if (strcmp(WEB_PASS, "CHANGE_ME_WEB_PASSWORD") == 0 || strcmp(OTA_PASS, "CHANGE_ME_OTA_PASSWORD") == 0)
-    Serial.println("[WARN] secrets.h still has placeholder WEB_PASS/OTA_PASS — those are public "
+  if (strcmp(WEB_PASS, "CHANGE_ME_WEB_PASSWORD") == 0)
+    Serial.println("[WARN] secrets.h still has the placeholder WEB_PASS — it's public "
                     "(they're in the repo's example file). Set real values before trusting this "
                     "device on a network you don't fully control.");
 
@@ -602,6 +625,12 @@ void setup() {
   { const char* hdrs[] = { CSRF_HEADER }; web.collectHeaders(hdrs, 1); }  // needed for requireAuth()'s CSRF check
   web.on("/", []() { web.send_P(200, "text/html", PAGE); });
   web.on("/stats.json", handleStats);
+  web.on("/manifest.webmanifest", []() { web.send_P(200, "application/manifest+json", WEBMANIFEST); });
+  web.on("/icon.svg", []() { web.sendHeader("Cache-Control", "max-age=86400"); web.send_P(200, "image/svg+xml", ICON_SVG); });
+  web.on("/apple-touch-icon.png", []() {
+    web.sendHeader("Cache-Control", "max-age=86400");
+    web.send_P(200, "image/png", (const char*)APPLE_ICON, sizeof(APPLE_ICON));
+  });
   web.on("/ban", handleBan);
   web.on("/addblock", []() { if (!requireAuth()) return; addCustom(web.arg("d")); web.send(200, "text/plain", "ok"); });
   web.on("/unblock", []() { if (!requireAuth()) return; removeCustom(web.arg("d")); web.send(200, "text/plain", "ok"); });
@@ -624,14 +653,11 @@ void setup() {
     saveUpdateCfg(); web.send(200, "text/plain", "ok");
   });
   web.begin();
-  ArduinoOTA.setHostname("c3adblock");   // pio run -t upload --upload-port c3adblock.local
-  ArduinoOTA.setPassword(OTA_PASS);      // network OTA was unauthenticated upstream
-  ArduinoOTA.begin();
-  Serial.println("DNS :53 + dashboard :80 + OTA up");
+  Serial.println("DNS :53 + dashboard :80 up");
 }
 
 void loop() {
-  ArduinoOTA.handle();
+  improvLoop();   // lets the web-installer's "Change Wi-Fi" work on a running device
   web.handleClient();
   bool busy = handleDns();
   if (!blockingOn && resumeAt && (int32_t)(millis() - resumeAt) >= 0) { blockingOn = true; resumeAt = 0; }

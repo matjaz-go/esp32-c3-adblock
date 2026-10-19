@@ -3,7 +3,10 @@
 // Arduino IDE preprocessor doesn't choke on the inlined markup (issue #6).
 
 const char PAGE[] PROGMEM = R"HTML(<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
-<title>C3 AdBlock</title><style>
+<title>C3 AdBlock</title>
+<link rel=manifest href=/manifest.webmanifest><link rel=icon href=/icon.svg><link rel=apple-touch-icon href=/apple-touch-icon.png>
+<meta name=theme-color content="#161b22"><meta name=apple-mobile-web-app-capable content=yes><meta name=mobile-web-app-capable content=yes>
+<meta name=apple-mobile-web-app-title content=AdBlock><meta name=apple-mobile-web-app-status-bar-style content=black><style>
 body{font:14px system-ui,sans-serif;margin:0;background:#0d1117;color:#c9d1d9}
 header{background:#161b22;padding:14px 18px;border-bottom:1px solid #30363d}
 h1{margin:0;font-size:18px}h1 span{color:#3fb950}.wrap{padding:16px;max-width:1000px;margin:auto}
@@ -20,7 +23,7 @@ h2{font-size:14px;color:#8b949e;margin:18px 0 8px}
 </style></head><body>
 <header><h1>🛡️ C3 AdBlock <span id=host></span></h1></header><div class=wrap>
 <div id=credwarn style="display:none;background:#3b1d1d;border:1px solid #f85149;color:#ffb3ae;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px">
-⚠️ <b>Default credentials in use.</b> WEB_PASS/OTA_PASS in <code>secrets.h</code> are still the placeholder values — anyone can read them in the public repo. Set real values and reflash.
+⚠️ <b>Default credentials in use.</b> WEB_PASS in <code>secrets.h</code> is still the placeholder value — anyone can read them in the public repo. Set real values and reflash.
 </div>
 <div id=blockbar style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding:12px 14px;background:#161b22;border:1px solid #30363d;border-radius:8px">
 <span id=blockdot style=font-size:20px>🛡️</span><b id=blockstate style=flex:1 data-on=1>Blocking active</b>

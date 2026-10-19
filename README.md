@@ -73,9 +73,9 @@ One USB flash to get going — after that, **firmware and blocklist both update 
 # 1. copy the secrets template (gitignored, stays local) and edit it:
 #    - WIFI_SSID / WIFI_PASS are optional — leave the placeholders and use the
 #      on-device setup portal instead (below).
-#    - WEB_USER / WEB_PASS / OTA_PASS are NOT optional: they gate the dashboard's
+#    - WEB_USER / WEB_PASS are NOT optional: they gate the dashboard's
 #      state-changing endpoints (/ban, /addblock, /upload, /update, /setupdate,
-#      /forgetwifi) and network OTA. Pick real values — these used to be wide
+#      /forgetwifi). Pick real values — these used to be wide
 #      open to anyone on the LAN.
 cp src/secrets.example.h src/secrets.h
 #    then edit src/secrets.h
@@ -110,7 +110,11 @@ can't be downloaded the build stops instead of silently producing a smaller list
 
 ### WiFi setup (no re-flash needed)
 
-If it can't connect (or you never set `secrets.h`), it starts an open access point
+If you flashed it with the [web installer](docs/), the installer page asks for your WiFi
+right after flashing and sends it over the USB cable ([Improv Serial](https://www.improv-wifi.com/serial/)) —
+no access point to join. Plug it in and click **Connect** again any time to change networks.
+
+Otherwise, if it can't connect (or you never set `secrets.h`), it starts an open access point
 **`C3-AdBlock-XXXX`** with a captive portal — join it from a phone, pick your network,
 type the password, done. To move it to a new network later: click **Forget WiFi** on
 the dashboard, or hold the **BOOT** button while powering on, and the setup portal
@@ -127,10 +131,13 @@ The dashboard at **http://c3adblock.local** does it all:
   published at a stable URL, so pasting this once keeps a device current on its own:
   `https://github.com/M-Abozaid/esp32-c3-adblock/releases/download/blocklist/blocklist.bin`
 - **Firmware** — upload `.pio/build/c3/firmware.bin` under *Firmware → OTA update*; the
-  device verifies it and reboots into the new image. Or push over WiFi from the CLI:
-  ```bash
-  pio run -t upload --upload-port c3adblock.local --upload-protocol espota
-  ```
+  device verifies it and reboots into the new image. (CLI push via `espota`/ArduinoOTA
+  was removed to keep the C3 build inside its 1.3 MB app slot — use the dashboard.)
+
+  ⚠️ **Upgrading a 1.0.0 device:** 1.1.0 builds on the Arduino 2.x core (`espressif32@7.1.3`),
+  which can't mount the filesystem 1.0.0 wrote, so an OTA firmware upload reformats it —
+  re-upload the blocklist (or use *Remote auto-update*) and re-add custom domains/bans
+  afterwards. Re-installing from the web installer avoids this.
 
 **4 MB flash tradeoff:** firmware OTA needs *two* app slots, which leaves ~1.3 MB for the
 blocklist (**~250k domains max**). The aggressive 537k "ultimate" list only fits the
@@ -145,9 +152,6 @@ state-changing endpoint requires **HTTP Basic Auth** (`WEB_USER`/`WEB_PASS` from
 - `/ban`, `/addblock`, `/unblock`, `/forgetwifi`
 - `/upload`, `/update` (blocklist and firmware OTA)
 - `/setupdate`, `/fetchnow`
-
-Network OTA (`ArduinoOTA`, e.g. `pio run -t upload --upload-port c3adblock.local
---upload-protocol espota`) requires `OTA_PASS` from the same file.
 
 Without this, anyone who could reach the device on the LAN could reflash it
 with arbitrary firmware or rewrite the blocklist with zero credentials — worth
@@ -176,7 +180,7 @@ can, which is what the dashboard's own JS does) — this is why `/forgetwifi` is
 no longer a bare URL you can visit directly; use the dashboard button instead.
 
 **Default credentials:** if `secrets.h` still has the placeholder
-`CHANGE_ME_WEB_PASSWORD` / `CHANGE_ME_OTA_PASSWORD` values from
+`CHANGE_ME_WEB_PASSWORD` value from
 `secrets.example.h`, the device boots with a "password" that's public (it's
 sitting in this repo's example file). The firmware logs a warning over serial
 and shows a banner on the dashboard when this is the case — but it will still

@@ -85,11 +85,7 @@ pio device monitor -e c3
 `http://c3adblock.local` のダッシュボードから操作できます。
 
 - **ブロックリスト**: 新しく作成した`blocklist.bin`を*Blocklist → Upload*からアップロードできます。または、*Remote auto-update*にURLを設定すると、デバイスが定期的に作成済みの`blocklist.bin`を取得します。たとえばGitHubリリースのアセットを指定すれば、一度更新するだけで全デバイスが取得できます。
-- **ファームウェア**: *Firmware → OTA update*から`.pio/build/<environment>/firmware.bin`をアップロードできます。デバイスは内容を検証してから、新しいイメージで再起動します。CLIからWi-Fi経由で書き込むこともできます。
-
-  ```bash
-  pio run -t upload --upload-port c3adblock.local --upload-protocol espota
-  ```
+- **ファームウェア**: *Firmware → OTA update*から`.pio/build/<environment>/firmware.bin`をアップロードできます。デバイスは内容を検証してから、新しいイメージで再起動します。（C3のアプリ領域1.3MBに収めるため、CLIからの`espota`/ArduinoOTA書き込みは削除しました。ダッシュボードを使ってください。）
 
 **4 MBフラッシュでのトレードオフ:** ファームウェアOTAにはアプリ用領域が2つ必要です。そのため、ブロックリストに使えるのは約1.3 MB、最大約25万ドメインです。53万7,000件の強力な"ultimate"リストは、ファームウェアOTAを使わない単一アプリ用パーティションでのみ利用できます。用途に応じて`partitions.csv`を選んでください。
 
